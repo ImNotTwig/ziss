@@ -65,7 +65,7 @@ pub const DataBase = struct {
 
     pub fn writeDBToFile(self: @This()) !void {
         for (self.accounts.items) |a| {
-            var buf: [256]u8 = undefined;
+            var buf: [1024]u8 = undefined;
             var stream = std.io.fixedBufferStream(&buf);
             var iter = a.data.iterator();
 
