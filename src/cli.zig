@@ -3,7 +3,7 @@ const std = @import("std");
 const main = @import("./main.zig");
 const zpass = @import("./zpass.zig");
 
-const prompt = "zp: ";
+const prompt = "zs: ";
 
 pub const Repl = struct {
     stdin: std.fs.File.Reader,
