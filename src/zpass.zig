@@ -80,7 +80,7 @@ pub const DataBase = struct {
             const tmpPath = try std.mem.concat(self.allocator, u8, &.{ "/tmp/zpass/", a.data.get("path").? });
             const path = try std.mem.concat(self.allocator, u8, &.{ self.config.root, "/", hashOut });
 
-            try std.fs.makeDirAbsolute("/tmp/zpass/");
+            std.fs.makeDirAbsolute("/tmp/zpass/") catch {};
             var file = try std.fs.createFileAbsolute(tmpPath, .{});
             defer {
                 file.close();

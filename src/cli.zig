@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const db = @import("./main.zig").db;
+const main = @import("./main.zig");
 const zpass = @import("./zpass.zig");
 
 const prompt = "zp: ";
@@ -14,6 +14,7 @@ pub const Repl = struct {
         while (true) {
             try self.stdout.print(prompt, .{});
             const input = self.stdin.readUntilDelimiterAlloc(self.allocator, '\n', 64) catch {
+                // clear standard input buffer
                 while (true) {
                     const extra = try self.stdin.readByte();
                     if (extra == '\n') break;
@@ -28,6 +29,7 @@ pub const Repl = struct {
             const cmd = std.ascii.lowerString(&cmdBuf, iter.first());
 
             var args = std.ArrayList([]const u8).init(self.allocator);
+            defer args.deinit();
             while (iter.next()) |word| {
                 if (std.mem.trim(u8, word, &std.ascii.whitespace).len == 0) continue;
                 try args.append(word);
@@ -46,48 +48,95 @@ pub const Repl = struct {
         }
 
         if (std.mem.eql(u8, cmd, "add")) {
-            if (args.items.len == 0) {
-                try self.stdout.print("need argument: <path>, but not provided\n", .{});
+            try self.add(args);
+        }
+    }
+
+    fn add(self: @This(), args: std.ArrayList([]const u8)) !void {
+        if (args.items.len == 0) {
+            try self.stdout.print("need argument: <path>, but not provided\n", .{});
+            return;
+        }
+        var account = zpass.Account{
+            .data = std.StringHashMap([]const u8).init(self.allocator),
+        };
+
+        try account.data.put("path", args.items[0]);
+
+        var pw: []u8 = "";
+        while (std.mem.eql(u8, "", std.mem.trim(u8, pw, &std.ascii.whitespace))) {
+            pw = try self.readPassword();
+        }
+        try account.data.put("password", pw);
+
+        try self.stdout.print("Would you like to add any additional fields? Recommended: username, email, service (y/N) ", .{});
+        while (true) {
+            const buf = try self.stdin.readByte();
+            if (std.ascii.toLower(buf) == 'n') {
+                try main.db.accounts.append(account);
+                try main.db.writeDBToFile();
                 return;
             }
-            var account = zpass.Account{
-                .data = std.StringHashMap([]const u8).init(self.allocator),
-            };
-
-            try account.data.put("path", args.items[0]);
-            try self.stdout.print("password: ", .{});
-
-            var attr = std.posix.tcgetattr(std.posix.STDIN_FILENO) catch unreachable;
-            const originalAttr = attr;
-
-            attr.lflag.ECHO = false;
-            attr.lflag.ICANON = false;
-            std.posix.tcsetattr(std.posix.STDIN_FILENO, .NOW, attr) catch unreachable;
-            defer std.posix.tcsetattr(std.posix.STDIN_FILENO, .NOW, originalAttr) catch unreachable;
-
-            var pw: [256]u8 = undefined;
-
-            //TODO: manage backspace correctly, eg stop at beginning of input, and actually delete from buffer
-            var i: usize = 0;
-            while (true) {
-                const buf = self.stdin.readByte() catch break;
-                if (buf == '\n') break;
-                if (buf == 127) {
-                    if (i > 0) {
-                        try self.stdout.writeAll("\x08 \x08");
-                        pw[i] = undefined;
-                        i -= 1;
-                    }
-                } else {
-                    try self.stdout.print("*", .{});
-                    pw[i] = buf;
-                    i += 1;
-                }
+            if (std.ascii.toLower(buf) == 'y') {
+                _ = try self.stdin.readByte();
+                break;
             }
-            try self.stdout.print("\n", .{});
-
-            std.debug.print("pw: {s}\n", .{pw[0..i]});
-            attr = originalAttr;
         }
+        //TODO: ask user for confirmation at end of adding fields
+        //NOTE: perhaps make a configuration option for default fields?
+        var lookForField = true;
+        var field: []u8 = undefined;
+        var value: []u8 = undefined;
+        try self.stdout.print("field (leave empty to continue): ", .{});
+        while (true) {
+            const buf = try self.stdin.readUntilDelimiterAlloc(self.allocator, '\n', 64);
+            if (lookForField) {
+                if (std.mem.eql(u8, "", std.mem.trim(u8, buf, &std.ascii.whitespace))) {
+                    try main.db.accounts.append(account);
+                    try main.db.writeDBToFile();
+                    return;
+                }
+                field = buf;
+                try self.stdout.print("value: ", .{});
+            } else {
+                value = buf;
+                try account.data.put(field, value);
+                try self.stdout.print("field (leave empty to continue): ", .{});
+            }
+            lookForField = !lookForField;
+        }
+    }
+
+    fn readPassword(self: @This()) ![]u8 {
+        try self.stdout.print("password: ", .{});
+        var attr = std.posix.tcgetattr(std.posix.STDIN_FILENO) catch unreachable;
+        const originalAttr = attr;
+
+        attr.lflag.ECHO = false;
+        attr.lflag.ICANON = false;
+        std.posix.tcsetattr(std.posix.STDIN_FILENO, .NOW, attr) catch unreachable;
+
+        var pw: [256]u8 = undefined;
+
+        var i: usize = 0;
+        while (true) {
+            const buf = try self.stdin.readByte();
+            if (buf == '\n') break;
+            if (buf == std.ascii.control_code.del) {
+                if (i > 0) {
+                    try self.stdout.writeAll("\x08 \x08");
+                    pw[i] = undefined;
+                    i -= 1;
+                }
+            } else {
+                try self.stdout.print("*", .{});
+                pw[i] = buf;
+                i += 1;
+            }
+        }
+        try self.stdout.print("\n", .{});
+
+        std.posix.tcsetattr(std.posix.STDIN_FILENO, .NOW, originalAttr) catch unreachable;
+        return self.allocator.dupe(u8, pw[0..i]);
     }
 };
