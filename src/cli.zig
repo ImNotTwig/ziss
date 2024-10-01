@@ -109,26 +109,52 @@ pub const Repl = struct {
         if (try self.getConfirmation()) {
             try self.readFields(&account);
         }
+        var iter = account.data.iterator();
+
+        //TODO: We should make a seperate function for editing an account, and upload the current version of the account into the store,
+        // and then edit that version of the account, I think it would be much more streamlined
+        var confirmed = false;
+        while (true) {
+            while (iter.next()) |i| {
+                if (std.mem.eql(u8, i.key_ptr.*, "password")) continue;
+                if (std.mem.eql(u8, i.key_ptr.*, "path")) continue;
+                try self.stdout.print("{s}: {s}\n", .{ i.key_ptr.*, i.value_ptr.* });
+            }
+            try self.stdout.print("Is this correct? [y/N] ", .{});
+            confirmed = try self.getConfirmation();
+            if (confirmed) break;
+
+            var fieldBuf: [256]u8 = undefined;
+            var valueBuf: [256]u8 = undefined;
+            try self.stdout.print("Field to edit: ", .{});
+            const field = std.ascii.lowerString(&fieldBuf, try self.stdin.readUntilDelimiterAlloc(self.allocator, '\n', 256));
+            if (std.mem.eql(u8, "", std.mem.trim(u8, field, &std.ascii.whitespace))) break;
+            try self.stdout.print("value: ", .{});
+            const value = std.ascii.lowerString(&valueBuf, try self.stdin.readUntilDelimiterAlloc(self.allocator, '\n', 256));
+
+            try account.data.put(field, value);
+        }
 
         try main.db.accounts.append(account);
         try main.db.writeDBToFile();
     }
 
     fn readFields(self: @This(), account: *zpass.Account) !void {
-        //TODO: ask user for confirmation at end of adding fields
         //NOTE: perhaps make a configuration option for default fields?
         var lookForField = true;
         var field: []u8 = undefined;
         var value: []u8 = undefined;
         try self.stdout.print("field (leave empty to continue): ", .{});
         while (true) {
-            const buf = try self.stdin.readUntilDelimiterAlloc(self.allocator, '\n', 64);
+            var lowerBuf: [256]u8 = undefined;
+            const input = try self.stdin.readUntilDelimiterAlloc(self.allocator, '\n', 256);
             if (lookForField) {
-                if (std.mem.eql(u8, "", std.mem.trim(u8, buf, &std.ascii.whitespace))) break;
-                field = buf;
+                const lower = std.ascii.lowerString(&lowerBuf, input);
+                if (std.mem.eql(u8, "", std.mem.trim(u8, lower, &std.ascii.whitespace))) break;
+                field = input;
                 try self.stdout.print("value: ", .{});
             } else {
-                value = buf;
+                value = input;
                 try account.data.put(field, value);
                 try self.stdout.print("field (leave empty to continue): ", .{});
             }
