@@ -80,6 +80,20 @@ pub const Repl = struct {
         }
     }
 
+    //TODO: remove file from store
+    fn rm(self: @This(), args: std.ArrayList([]const u8)) !void {
+        if (args.items.len == 0) {
+            try self.stdout.print("need argument: <path>, but not provided\n", .{});
+            return;
+        }
+        for (0.., main.db.accounts.items) |i, v| {
+            if (std.mem.eql(u8, args[0], try v.data.get("path"))) {
+                main.db.accounts.swapRemove(i);
+                break;
+            }
+        }
+    }
+
     fn add(self: @This(), args: std.ArrayList([]const u8)) !void {
         for (main.db.accounts.items) |i| {
             if (std.mem.eql(u8, i.data.get("path").?, args.items[0])) {
