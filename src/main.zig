@@ -2,10 +2,10 @@ const std = @import("std");
 
 const cfg = @import("./config.zig");
 const age = @import("./age.zig");
-const zpass = @import("./zpass.zig");
+const ziss = @import("./ziss.zig");
 const cli = @import("./cli.zig");
 
-pub var db: zpass.DataBase = undefined;
+pub var db: ziss.DataBase = undefined;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -21,7 +21,7 @@ pub fn main() !void {
 
     std.fs.makeDirAbsolute(config.root) catch {};
 
-    db.init(config, allocator);
+    try db.init(config, allocator);
 
     // try db.readAccountFromFile("./test.age");
 

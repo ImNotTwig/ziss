@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const main = @import("./main.zig");
-const zpass = @import("./zpass.zig");
+const ziss = @import("./ziss.zig");
 
 const prompt = "zs: ";
 
@@ -78,27 +78,34 @@ pub const Repl = struct {
         if (std.mem.eql(u8, cmd, "add")) {
             try self.add(args);
         }
+        if (std.mem.eql(u8, cmd, "remove") or std.mem.eql(u8, cmd, "rm")) {
+            try self.rm(args);
+        }
     }
 
-    //TODO: remove file from store
     fn rm(self: @This(), args: std.ArrayList([]const u8)) !void {
         if (args.items.len == 0) {
             try self.stdout.print("need argument: <path>, but not provided\n", .{});
             return;
         }
         for (0.., main.db.accounts.items) |i, v| {
-            if (std.mem.eql(u8, args[0], try v.data.get("path"))) {
-                main.db.accounts.swapRemove(i);
-                break;
+            if (std.mem.eql(u8, args.items[0], v.data.get("path").?)) {
+                _ = main.db.accounts.swapRemove(i);
+                const hashOut = try ziss.hash(v.data.get("path").?, self.allocator);
+                const path = try std.mem.concat(self.allocator, u8, &.{ main.db.config.root, "/", hashOut });
+                try self.stdout.print("removed: {s}\n", .{path});
+                std.fs.deleteFileAbsolute(path) catch {};
+                return;
             }
         }
+        try self.stdout.print("Could not find: {s}\n", .{args.items[0]});
     }
 
     fn add(self: @This(), args: std.ArrayList([]const u8)) !void {
         for (main.db.accounts.items) |i| {
             if (std.mem.eql(u8, i.data.get("path").?, args.items[0])) {
                 try self.stdout.print(
-                    "{s} already exists, would you like to overwrite?",
+                    "{s} already exists, would you like to overwrite?\n",
                     .{args.items[0]},
                 );
             }
@@ -107,7 +114,7 @@ pub const Repl = struct {
             try self.stdout.print("need argument: <path>, but not provided\n", .{});
             return;
         }
-        var account = zpass.Account{
+        var account = ziss.Account{
             .data = std.StringHashMap([]const u8).init(self.allocator),
         };
 
@@ -153,7 +160,7 @@ pub const Repl = struct {
         try main.db.writeDBToFile();
     }
 
-    fn readFields(self: @This(), account: *zpass.Account) !void {
+    fn readFields(self: @This(), account: *ziss.Account) !void {
         //NOTE: perhaps make a configuration option for default fields?
         var lookForField = true;
         var field: []u8 = undefined;

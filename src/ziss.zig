@@ -25,10 +25,20 @@ pub const DataBase = struct {
     allocator: std.mem.Allocator,
     config: cfg.Config,
 
-    pub fn init(self: *@This(), config: cfg.Config, allocator: std.mem.Allocator) void {
+    pub fn init(self: *@This(), config: cfg.Config, allocator: std.mem.Allocator) !void {
         self.config = config;
         self.allocator = allocator;
         self.accounts = std.ArrayList(Account).init(allocator);
+
+        // Add all files names in the src folder to `files`
+        var dir = try std.fs.cwd().openDir(config.root, .{ .iterate = true });
+        var iter = dir.iterate();
+        while (try iter.next()) |file| {
+            if (file.kind != .file) {
+                continue;
+            }
+            try self.readAccountFromFile(try std.mem.concat(allocator, u8, &.{ config.root, "/", file.name }));
+        }
     }
 
     pub fn parseAndAddAccount(self: *@This(), accString: []const u8) !void {
@@ -75,7 +85,7 @@ pub const DataBase = struct {
             }
             const accStr = stream.buffer[0..stream.pos];
 
-            const hashOut = try hash(try std.mem.concat(self.allocator, u8, &.{a.data.get("path").?}), self.allocator);
+            const hashOut = try hash(a.data.get("path").?, self.allocator);
 
             const tmpPath = try std.mem.concat(self.allocator, u8, &.{ "/tmp/zpass/", a.data.get("path").? });
             const path = try std.mem.concat(self.allocator, u8, &.{ self.config.root, "/", hashOut });
