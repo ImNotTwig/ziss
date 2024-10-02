@@ -10,23 +10,21 @@ pub var db: ziss.DataBase = undefined;
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
+    const stdin = std.io.getStdIn().reader();
+    const stdout = std.io.getStdOut().writer();
 
-    const home = std.posix.getenv("HOME").?;
-    const confFile = try std.mem.concat(allocator, u8, &.{ home, "/.config/zpass/zpass.cfg" });
+    const home = std.posix.getenv("HOME").?; // no password management for homeless people ig
     const confDir = try std.mem.concat(allocator, u8, &.{ home, "/.config/zpass/" });
-    var config: cfg.Config = undefined;
-
+    const confFile = try std.mem.concat(allocator, u8, &.{ confDir, "zpass.cfg" });
     std.fs.makeDirAbsolute(confDir) catch {};
+
+    var config: cfg.Config = undefined;
     try config.init(confFile, allocator);
 
     std.fs.makeDirAbsolute(config.root) catch {};
 
     try db.init(config, allocator);
 
-    // try db.readAccountFromFile("./test.age");
-
-    const stdin = std.io.getStdIn().reader();
-    const stdout = std.io.getStdOut().writer();
     const repl = cli.Repl{
         .allocator = allocator,
         .stdin = stdin,

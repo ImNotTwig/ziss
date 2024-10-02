@@ -54,7 +54,6 @@ pub const Repl = struct {
         while (true) {
             const buf = try self.stdin.readByte();
             if (std.ascii.toLower(buf) == 'n') {
-                std.posix.tcsetattr(std.posix.STDIN_FILENO, .NOW, originalAttr) catch unreachable;
                 break;
             }
             if (std.ascii.toLower(buf) == 'y') {
@@ -66,8 +65,8 @@ pub const Repl = struct {
         return confirm;
     }
 
-    // add, rm, ls, mv, edit, show
-    // help
+    // add[x], rm[x], ls[x], mv[ ], edit[ ], show[x], search[ ]
+    // help[ ]
     fn handleCommand(self: @This(), cmd: []const u8, args: std.ArrayList([]const u8)) !void {
         if (args.items.len != 0) {
             for (args.items) |arg| {
@@ -80,6 +79,48 @@ pub const Repl = struct {
         }
         if (std.mem.eql(u8, cmd, "remove") or std.mem.eql(u8, cmd, "rm")) {
             try self.rm(args);
+        }
+        if (std.mem.eql(u8, cmd, "list") or std.mem.eql(u8, cmd, "ls")) {
+            try self.ls();
+        }
+        if (std.mem.eql(u8, cmd, "show") or std.mem.eql(u8, cmd, "cat")) {
+            try self.show(args);
+        }
+    }
+
+    fn mv(self: @This(), args: std.ArrayList([]const u8)) !void {
+        if (args.items.len < 2) {
+            try self.stdout.print("need argument(s): <source, destination>, but not provided\n", .{});
+            return;
+        }
+    }
+
+    fn show(self: @This(), args: std.ArrayList([]const u8)) !void {
+        if (args.items.len == 0) {
+            try self.stdout.print("need argument: <path>, but not provided\n", .{});
+            return;
+        }
+
+        for (main.db.accounts.items) |account| {
+            if (std.mem.eql(u8, account.data.get("path").?, args.items[0])) {
+                var iter = account.data.iterator();
+                while (iter.next()) |i| {
+                    if (args.items.len == 2 and std.mem.eql(u8, args.items[1], i.key_ptr.*)) {
+                        try self.stdout.print("{s}: {s}\n", .{ i.key_ptr.*, i.value_ptr.* });
+                        return;
+                    } else {
+                        if (std.mem.eql(u8, i.key_ptr.*, "path")) continue;
+                        try self.stdout.print("{s}: {s}\n", .{ i.key_ptr.*, i.value_ptr.* });
+                    }
+                }
+                return;
+            }
+        }
+    }
+
+    fn ls(self: @This()) !void {
+        for (main.db.accounts.items) |account| {
+            try self.stdout.print("{s}\n", .{account.data.get("path").?});
         }
     }
 
@@ -105,11 +146,13 @@ pub const Repl = struct {
         for (main.db.accounts.items) |i| {
             if (std.mem.eql(u8, i.data.get("path").?, args.items[0])) {
                 try self.stdout.print(
-                    "{s} already exists, would you like to overwrite?\n",
+                    "{s} already exists, would you like to overwrite? [y/N] ",
                     .{args.items[0]},
                 );
             }
         }
+        if (!try self.getConfirmation()) return;
+
         if (args.items.len == 0) {
             try self.stdout.print("need argument: <path>, but not provided\n", .{});
             return;
