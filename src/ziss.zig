@@ -51,7 +51,7 @@ pub const DataBase = struct {
                 try account.data.put(try self.allocator.dupe(u8, first), try self.allocator.dupe(u8, kv));
             }
         }
-        try self.accounts.append(account);
+        try self.addAccount(account);
     }
 
     pub fn readAccountFromFile(self: *@This(), accountFilePath: []const u8) !void {
@@ -71,6 +71,15 @@ pub const DataBase = struct {
                 return;
             }
         }
+    }
+
+    pub fn addAccount(self: *@This(), account: Account) !void {
+        for (self.accounts.items) |a| {
+            if (std.mem.eql(u8, a.data.get("path").?, account.data.get("path").?)) {
+                return error.dataBaseCollision;
+            }
+        }
+        try self.accounts.append(account);
     }
 
     pub fn writeDBToFile(self: @This()) !void {

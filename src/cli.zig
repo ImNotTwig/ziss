@@ -13,11 +13,10 @@ pub const Repl = struct {
     pub fn startRepl(self: @This()) !void {
         while (true) {
             try self.stdout.print(prompt, .{});
-            const input = self.stdin.readUntilDelimiterAlloc(self.allocator, '\n', 64) catch {
+            const input = self.stdin.readUntilDelimiterAlloc(self.allocator, '\n', 128) catch {
                 try self.clearLineExtra();
                 continue;
             };
-            if (input.len > 64) continue;
 
             var iter = std.mem.splitSequence(u8, input, " ");
 
@@ -30,7 +29,7 @@ pub const Repl = struct {
                 if (std.mem.trim(u8, word, &std.ascii.whitespace).len == 0) continue;
                 try args.append(word);
             }
-            try self.handleCommand(cmd, args);
+            try self.handleCommand(cmd, &args);
         }
     }
 
@@ -65,9 +64,9 @@ pub const Repl = struct {
         return confirm;
     }
 
-    // add[x], rm[x], ls[x], mv[ ], edit[ ], show[x], search[ ]
+    // add[x], rm[x], ls[x], mv[x], edit[ ], show[x], search[ ]
     // help[ ]
-    fn handleCommand(self: @This(), cmd: []const u8, args: std.ArrayList([]const u8)) !void {
+    fn handleCommand(self: @This(), cmd: []const u8, args: *std.ArrayList([]const u8)) !void {
         if (args.items.len != 0) {
             for (args.items) |arg| {
                 if (std.mem.trim(u8, arg, &std.ascii.whitespace).len == 0) continue;
@@ -75,24 +74,49 @@ pub const Repl = struct {
         }
 
         if (std.mem.eql(u8, cmd, "add")) {
-            try self.add(args);
+            try self.add(args.*);
         }
         if (std.mem.eql(u8, cmd, "remove") or std.mem.eql(u8, cmd, "rm")) {
-            try self.rm(args);
+            try self.rm(args.*);
         }
         if (std.mem.eql(u8, cmd, "list") or std.mem.eql(u8, cmd, "ls")) {
             try self.ls();
         }
         if (std.mem.eql(u8, cmd, "show") or std.mem.eql(u8, cmd, "cat")) {
-            try self.show(args);
+            try self.show(args.*);
+        }
+        if (std.mem.eql(u8, cmd, "move") or std.mem.eql(u8, cmd, "mv")) {
+            try self.mv(args);
         }
     }
 
-    fn mv(self: @This(), args: std.ArrayList([]const u8)) !void {
+    fn mv(self: @This(), args: *std.ArrayList([]const u8)) !void {
         if (args.items.len < 2) {
             try self.stdout.print("need argument(s): <source, destination>, but not provided\n", .{});
             return;
         }
+
+        var account: ziss.Account = undefined;
+        var found = false;
+        for (0.., main.db.accounts.items) |i, j| {
+            if (std.mem.eql(u8, args.items[0], j.data.get("path").?)) {
+                const hashOut = try ziss.hash(args.items[0], self.allocator);
+                const path = try std.mem.concat(self.allocator, u8, &.{ main.db.config.root, "/", hashOut });
+                try std.fs.deleteFileAbsolute(path);
+                account = main.db.accounts.swapRemove(i);
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            try self.stdout.print("Could not find {s} in store.", .{args.items[0]});
+            return;
+        }
+
+        try account.data.put("path", args.items[1]);
+        try main.db.addAccount(account);
+        try self.stdout.print("moved: {s} to {s}\n", .{ args.items[0], args.items[1] });
+        try main.db.writeDBToFile();
     }
 
     fn show(self: @This(), args: std.ArrayList([]const u8)) !void {
@@ -149,9 +173,9 @@ pub const Repl = struct {
                     "{s} already exists, would you like to overwrite? [y/N] ",
                     .{args.items[0]},
                 );
+                if (!try self.getConfirmation()) return;
             }
         }
-        if (!try self.getConfirmation()) return;
 
         if (args.items.len == 0) {
             try self.stdout.print("need argument: <path>, but not provided\n", .{});
@@ -172,6 +196,10 @@ pub const Repl = struct {
         try self.stdout.print("Would you like to add any additional fields? [y/N] ", .{});
         if (try self.getConfirmation()) {
             try self.readFields(&account);
+        } else {
+            try main.db.addAccount(account);
+            try main.db.writeDBToFile();
+            return;
         }
         var iter = account.data.iterator();
 
@@ -199,7 +227,7 @@ pub const Repl = struct {
             try account.data.put(field, value);
         }
 
-        try main.db.accounts.append(account);
+        try main.db.addAccount(account);
         try main.db.writeDBToFile();
     }
 
