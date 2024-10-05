@@ -45,7 +45,7 @@ pub const DataBase = struct {
         var account = Account{ .data = std.StringHashMap([]const u8).init(self.allocator) };
         var lineIter = std.mem.splitSequence(u8, accString, "\n");
         while (lineIter.next()) |line| {
-            var keyIter = std.mem.splitSequence(u8, line, "=");
+            var keyIter = std.mem.splitSequence(u8, line, " = ");
             const first = keyIter.first();
             while (keyIter.next()) |kv| {
                 try account.data.put(try self.allocator.dupe(u8, first), try self.allocator.dupe(u8, kv));
@@ -89,7 +89,7 @@ pub const DataBase = struct {
             var iter = a.data.iterator();
 
             while (iter.next()) |e| {
-                const arr = try std.mem.concat(self.allocator, u8, &.{ e.key_ptr.*, "=", e.value_ptr.*, "\n" });
+                const arr = try std.mem.concat(self.allocator, u8, &.{ e.key_ptr.*, " = ", e.value_ptr.*, "\n" });
                 _ = try stream.write(arr);
             }
             const accStr = stream.buffer[0..stream.pos];

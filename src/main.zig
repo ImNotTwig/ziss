@@ -25,7 +25,7 @@ pub fn main() !void {
 
     try db.init(config, allocator);
 
-    const repl = cli.Repl{
+    var repl = cli.Repl{
         .allocator = allocator,
         .stdin = stdin,
         .stdout = stdout,
