@@ -1,9 +1,9 @@
 const std = @import("std");
 
+const fuzzig = @import("fuzzig");
+
 const main = @import("./main.zig");
 const ziss = @import("./ziss.zig");
-
-const prompt = "zs: ";
 
 pub const Repl = struct {
     stdin: std.fs.File.Reader,
@@ -11,6 +11,8 @@ pub const Repl = struct {
     allocator: std.mem.Allocator,
     originalTermios: std.posix.termios = undefined,
     currentTermios: std.posix.termios = undefined,
+
+    const prompt = "zs: ";
 
     fn rawModeToggle(self: *@This()) !void {
         self.currentTermios.lflag.ICANON = !self.currentTermios.lflag.ICANON;
@@ -71,7 +73,7 @@ pub const Repl = struct {
         return confirm;
     }
 
-    // add[x], rm[x], ls[x], mv[x], edit[x], show[x], search[ ]
+    // add[x], rm[x], ls[x], mv[x], edit[x], show[x], search[x]
     // help[ ]
     fn handleCommand(self: *@This(), cmd: []const u8, args: *std.ArrayList([]const u8)) !bool {
         if (args.items.len != 0) {
@@ -98,8 +100,39 @@ pub const Repl = struct {
         if (std.mem.eql(u8, cmd, "edit") or std.mem.eql(u8, cmd, "ed")) {
             try self.ed(args.*);
         }
+        if (std.mem.eql(u8, cmd, "quit") or std.mem.eql(u8, cmd, "exit")) {
+            return false;
+        }
+        if (std.mem.eql(u8, cmd, "fd") or std.mem.eql(u8, cmd, "find")) {
+            try self.fd(args.*);
+        }
 
         return true;
+    }
+
+    fn fd(self: *@This(), args: std.ArrayList([]const u8)) !void {
+        if (args.items.len == 0) {
+            try self.stdout.print("need argument: <query>, but not provided\n", .{});
+            return;
+        }
+        var searcher = try fuzzig.Ascii.init(self.allocator, 256, 256, .{ .case_sensitive = false });
+        defer searcher.deinit();
+        var scores = std.ArrayList([2]i32).init(self.allocator);
+        for (0.., main.db.accounts.items) |i, v| {
+            if (searcher.score(v.data.get("path").?, args.items[0])) |score| {
+                try scores.append([2]i32{ score, @as(i32, @intCast(i)) });
+            }
+        }
+        std.mem.sort([2]i32, scores.items, {}, struct {
+            fn f(_: void, a: [2]i32, b: [2]i32) bool {
+                return a[0] < b[0];
+            }
+        }.f);
+
+        for (0.., scores.items) |i, score| {
+            if (i > 5) break;
+            try self.stdout.print("{s}\n", .{main.db.accounts.items[@as(usize, @intCast(score[1]))].data.get("path").?});
+        }
     }
 
     fn ed(self: *@This(), args: std.ArrayList([]const u8)) !void {
@@ -319,7 +352,7 @@ pub const Repl = struct {
                 }
             } else if (buf == std.ascii.control_code.del) {
                 if (len > 0) {
-                    try self.stdout.writeAll("\x08 \x08");
+                    try self.stdout.writeAll(&.{ std.ascii.control_code.bs, std.ascii.control_code.bs });
                     pw[len] = undefined;
                     len -= 1;
                 }

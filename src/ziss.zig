@@ -4,8 +4,6 @@ const age = @import("./age.zig");
 const cfg = @import("./config.zig");
 
 pub const DIGEST_SIZE = 64;
-//TODO:
-// * add commands from npg
 
 pub fn hash(s: []const u8, allocator: std.mem.Allocator) ![]const u8 {
     var h: [DIGEST_SIZE]u8 = undefined;
@@ -96,7 +94,7 @@ pub const DataBase = struct {
 
             const hashOut = try hash(a.data.get("path").?, self.allocator);
 
-            const tmpPath = try std.mem.concat(self.allocator, u8, &.{ "/tmp/zpass/", a.data.get("path").? });
+            const tmpPath = try std.mem.concat(self.allocator, u8, &.{ "/tmp/zpass/", hashOut });
             const path = try std.mem.concat(self.allocator, u8, &.{ self.config.root, "/", hashOut });
 
             std.fs.makeDirAbsolute("/tmp/zpass/") catch {};

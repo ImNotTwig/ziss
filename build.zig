@@ -11,6 +11,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const clap = b.dependency("clap", .{});
+    exe.root_module.addImport("clap", clap.module("clap"));
+    const fuzzig = b.dependency("fuzzig", .{}).module("fuzzig");
+    exe.root_module.addImport("fuzzig", fuzzig);
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
