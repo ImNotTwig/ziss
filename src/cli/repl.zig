@@ -2,9 +2,13 @@ const std = @import("std");
 
 const fuzzig = @import("fuzzig");
 
-const main = @import("./main.zig");
-const ziss = @import("./ziss.zig");
+const main = @import("../main.zig");
+const ziss = @import("../ziss.zig");
 
+const utils = @import("./utils.zig");
+
+//TODO: how do we seperate out functionality not specific to the repl, so that we can reuse
+// code in the normal cli
 pub const Repl = struct {
     stdin: std.fs.File.Reader,
     stdout: std.fs.File.Writer,
@@ -14,22 +18,13 @@ pub const Repl = struct {
 
     const prompt = "zs: ";
 
-    fn rawModeToggle(self: *@This()) !void {
-        self.currentTermios.lflag.ICANON = !self.currentTermios.lflag.ICANON;
-        if (self.currentTermios.lflag.ICANON == true) {
-            std.posix.tcsetattr(std.posix.STDIN_FILENO, .NOW, self.originalTermios) catch unreachable;
-            return;
-        }
-        std.posix.tcsetattr(std.posix.STDIN_FILENO, .NOW, self.currentTermios) catch unreachable;
-    }
-
     pub fn startRepl(self: *@This()) !void {
         self.originalTermios = std.posix.tcgetattr(std.posix.STDIN_FILENO) catch unreachable;
         self.currentTermios = self.originalTermios;
         while (true) {
             try self.stdout.print(prompt, .{});
             const input = self.stdin.readUntilDelimiterAlloc(self.allocator, '\n', 128) catch {
-                try self.clearLineExtra();
+                try utils.clearLineExtra(self.stdin);
                 continue;
             };
 
@@ -46,31 +41,6 @@ pub const Repl = struct {
             }
             if (!try self.handleCommand(cmd, &args)) return;
         }
-    }
-
-    fn clearLineExtra(self: @This()) !void {
-        while (true) {
-            const extra = try self.stdin.readByte();
-            if (extra == '\n') break;
-        }
-    }
-
-    fn getConfirmation(self: *@This()) !bool {
-        self.rawModeToggle() catch {};
-        defer self.rawModeToggle() catch {};
-        var confirm = false;
-        while (true) {
-            const buf = try self.stdin.readByte();
-            if (std.ascii.toLower(buf) == 'n') {
-                break;
-            }
-            if (std.ascii.toLower(buf) == 'y') {
-                confirm = true;
-                break;
-            }
-        }
-        try self.stdout.print("\n", .{});
-        return confirm;
     }
 
     // add[x], rm[x], ls[x], mv[x], edit[x], show[x], search[x]
@@ -149,7 +119,12 @@ pub const Repl = struct {
                         try self.stdout.print("{s}={s}\n", .{ j.key_ptr.*, j.value_ptr.* });
                     }
                     try self.stdout.print("Does this look correct? [y/N] ", .{});
-                    if (try self.getConfirmation()) break;
+                    if (try utils.getConfirmation(
+                        self.stdin,
+                        self.stdout,
+                        &self.currentTermios,
+                        &self.originalTermios,
+                    )) break;
                     try self.readFields(&main.db.accounts.items[i]);
                 }
                 try main.db.writeDBToFile();
@@ -242,7 +217,12 @@ pub const Repl = struct {
                     "{s} already exists, would you like to overwrite? [y/N] ",
                     .{args.items[0]},
                 );
-                if (!try self.getConfirmation()) return;
+                if (!try utils.getConfirmation(
+                    self.stdin,
+                    self.stdout,
+                    &self.currentTermios,
+                    &self.originalTermios,
+                )) return;
             }
         }
 
@@ -263,7 +243,12 @@ pub const Repl = struct {
         try account.data.put("password", pw);
 
         try self.stdout.print("Would you like to add any additional fields? [y/N] ", .{});
-        if (try self.getConfirmation()) {
+        if (try utils.getConfirmation(
+            self.stdin,
+            self.stdout,
+            &self.currentTermios,
+            &self.originalTermios,
+        )) {
             try self.readFields(&account);
         } else {
             try main.db.addAccount(account);
@@ -273,7 +258,6 @@ pub const Repl = struct {
         var iter = account.data.iterator();
 
         //TODO: Add option to edit password
-        var confirmed = false;
         while (true) {
             while (iter.next()) |i| {
                 if (std.mem.eql(u8, i.key_ptr.*, "password")) continue;
@@ -281,8 +265,12 @@ pub const Repl = struct {
                 try self.stdout.print("{s}={s}\n", .{ i.key_ptr.*, i.value_ptr.* });
             }
             try self.stdout.print("Is this correct? [y/N] ", .{});
-            confirmed = try self.getConfirmation();
-            if (confirmed) break;
+            if (try utils.getConfirmation(
+                self.stdin,
+                self.stdout,
+                &self.currentTermios,
+                &self.originalTermios,
+            )) break;
 
             var fieldBuf: [256]u8 = undefined;
             var valueBuf: [256]u8 = undefined;
@@ -328,10 +316,10 @@ pub const Repl = struct {
     fn readPassword(self: *@This(), prevPass: ?[256]u8) ![]u8 {
         try self.stdout.print("password: ", .{});
         self.currentTermios.lflag.ECHO = !self.currentTermios.lflag.ECHO;
-        self.rawModeToggle() catch {};
+        utils.rawModeToggle(&self.currentTermios, &self.originalTermios) catch {};
         defer {
             self.currentTermios.lflag.ECHO = !self.currentTermios.lflag.ECHO;
-            self.rawModeToggle() catch {};
+            utils.rawModeToggle(&self.currentTermios, &self.originalTermios) catch {};
         }
 
         var pw: [256]u8 = if (prevPass) |p| p else undefined;

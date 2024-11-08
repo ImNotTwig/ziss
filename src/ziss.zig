@@ -27,7 +27,6 @@ pub const DataBase = struct {
         self.config = config;
         self.allocator = allocator;
         self.accounts = std.ArrayList(Account).init(allocator);
-
         // Add all files names in the src folder to `files`
         var dir = try std.fs.cwd().openDir(config.root, .{ .iterate = true });
         var iter = dir.iterate();

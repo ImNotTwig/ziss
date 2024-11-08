@@ -1,0 +1,7 @@
+* Things to do:
+** TODO Implement a plugin system for the repl so that you can insert custom commands at compile time
+maybe also do this for normal commands idk
+** TODO Refactor the age command interface in the case when someone has an age key protected additionally with a passphrase
+** TODO Write the arg parsing library and integrate both the repl and normal cli with it
+** TODO Fix the way i parse the account file format, eg: it probably breaks if theres multiple = in the same line
+also maybe i should tokenize it?
