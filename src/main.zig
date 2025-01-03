@@ -21,7 +21,13 @@ pub fn main() !void {
 
     const confDir = try std.mem.concat(allocator, u8, &.{ confPre, "/zpass/" });
     const confFile = try std.mem.concat(allocator, u8, &.{ confDir, "zpass.cfg" });
-    std.fs.makeDirAbsolute(confDir) catch {};
+    std.fs.makeDirAbsolute(confDir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => {
+            std.log.err("error creating «{s}»: {}\n", .{ confDir, err });
+            std.process.exit(1);
+        },
+    };
 
     var config: cfg.Config = undefined;
     try config.init(confFile, allocator);
