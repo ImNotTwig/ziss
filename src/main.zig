@@ -32,7 +32,13 @@ pub fn main() !void {
     var config: cfg.Config = undefined;
     try config.init(confFile, allocator);
 
-    std.fs.makeDirAbsolute(config.root) catch {};
+    std.fs.makeDirAbsolute(config.root) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => {
+            std.log.err("error creating «{s}»: {}\n", .{ confDir, err });
+            std.process.exit(1);
+        },
+    };
 
     try db.init(config, allocator);
 
